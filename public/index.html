@@ -2,16 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JioMart Coupon Generator & Checker</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; }
+    .status { font-weight: 600; }
+    .status.valid { color: green; }
+    .status.invalid { color: red; }
+    .status.error { color: orange; }
+    .status.pending { color: #0d6efd; }
+    .spinner-border-sm { width: 1rem; height: 1rem; }
+    .copy-btn { cursor: pointer; }
+    .progress-text { font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .table-responsive { max-height: 500px; overflow-y: auto; }
+  </style>
 </head>
-<body class="p-4 bg-light">
+<body class="p-4">
   <div class="container">
-    <h1 class="mb-4">🎟️ JioMart Coupon</h1>
+    <h1 class="mb-4 text-center">🎟️ JioMart Coupon Checker</h1>
 
     <!-- User Inputs -->
-    <form id="configForm" class="row g-3 mb-4">
+    <form id="configForm" class="row g-3 mb-4 shadow-sm p-3 bg-white rounded">
       <div class="col-md-6">
         <label class="form-label">Cart ID</label>
         <input class="form-control" id="cartId" required>
@@ -25,11 +37,11 @@
         <input class="form-control" id="userId" required>
       </div>
       <div class="col-md-6">
-        <label class="form-label">PINCODE</label>
+        <label class="form-label">PIN Code</label>
         <input class="form-control" id="pin" required>
       </div>
       <div class="col-md-6">
-        <label class="form-label">How many coupons to test?</label>
+        <label class="form-label">Number of Coupons</label>
         <input type="number" class="form-control" id="count" value="5" min="1" max="50">
       </div>
       <div class="col-md-6">
@@ -37,24 +49,30 @@
         <input class="form-control" id="prefix" placeholder="e.g. 1J7M">
       </div>
       <div class="col-12">
-        <button class="btn btn-primary w-100">Generate & Check</button>
+        <button type="submit" class="btn btn-primary w-100">🚀 Generate & Check</button>
       </div>
     </form>
+
+    <!-- Progress -->
+    <div id="progressContainer" class="mb-2"></div>
 
     <!-- Results Table -->
     <div class="card shadow-sm">
       <div class="card-body">
         <h4>Results</h4>
-        <table class="table table-bordered table-striped">
-          <thead>
-            <tr>
-              <th>Coupon</th>
-              <th>Status</th>
-              <th>Message</th>
-            </tr>
-          </thead>
-          <tbody id="resultTable"></tbody>
-        </table>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Coupon</th>
+                <th>Status</th>
+                <th>Message</th>
+                <th>Copy</th>
+              </tr>
+            </thead>
+            <tbody id="resultTable"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -62,52 +80,68 @@
 <script>
   // Generate unique 10-char coupon (digit/letter alternating)
   function generateCoupon(prefixInput = "") {
-  const digits = "0123456789";
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const digits = "0123456789";
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let code = (prefixInput || "").toUpperCase();
+    if (code.length > 10) return code.slice(0, 10);
 
-  let code = (prefixInput || "").toUpperCase();
-
-  // Enforce strict max length = 10
-  if (code.length > 10) code = code.slice(0, 10);
-
-  // Determine what should come next
-  let nextShouldBeDigit;
-  if (code.length === 0) {
-    nextShouldBeDigit = true; // start with digit
-  } else {
-    const lastChar = code[code.length - 1];
-    nextShouldBeDigit = isNaN(lastChar); // if last is letter → next is digit
-  }
-
-  while (code.length < 10) {
-    if (nextShouldBeDigit) {
-      const digit = digits[Math.floor(Math.random() * digits.length)];
-      code += digit;
+    let nextShouldBeDigit;
+    if (code.length === 0) {
+      nextShouldBeDigit = true;
     } else {
-      const letter = letters[Math.floor(Math.random() * letters.length)];
-      code += letter;
+      const lastChar = code[code.length - 1];
+      nextShouldBeDigit = isNaN(lastChar);
     }
-    nextShouldBeDigit = !nextShouldBeDigit;
-  }
 
-  return code;
-}
+    while (code.length < 10) {
+      if (nextShouldBeDigit) {
+        code += digits[Math.floor(Math.random() * digits.length)];
+      } else {
+        code += letters[Math.floor(Math.random() * letters.length)];
+      }
+      nextShouldBeDigit = !nextShouldBeDigit;
+    }
+    return code;
+  }
 
   // Sleep helper
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Copy to clipboard
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => alert("Copied: " + text));
+  }
+
+  // Load saved inputs from localStorage
+  window.addEventListener("load", () => {
+    const fields = ["cartId", "authToken", "userId", "pin", "prefix"];
+    fields.forEach(f => {
+      if(localStorage.getItem(f)) document.getElementById(f).value = localStorage.getItem(f);
+    });
+  });
+
   document.getElementById("configForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    
+    // Save inputs
+    const fields = ["cartId", "authToken", "userId", "pin", "prefix"];
+    fields.forEach(f => localStorage.setItem(f, document.getElementById(f).value.trim()));
 
-    const cartId = document.getElementById("cartId").value;
-    const authToken = document.getElementById("authToken").value;
-    const userId = document.getElementById("userId").value;
-    const pin = document.getElementById("pin").value;
+    const cartId = document.getElementById("cartId").value.trim();
+    const authToken = document.getElementById("authToken").value.trim();
+    const userId = document.getElementById("userId").value.trim();
+    const pin = document.getElementById("pin").value.trim();
     const count = parseInt(document.getElementById("count").value);
     const prefix = document.getElementById("prefix").value.trim();
 
     const tableBody = document.getElementById("resultTable");
+    const progressContainer = document.getElementById("progressContainer");
     tableBody.innerHTML = "";
+    progressContainer.innerHTML = "";
+
+    // Disable form
+    const form = e.target;
+    form.querySelector("button").disabled = true;
 
     for (let i = 0; i < count; i++) {
       const coupon = generateCoupon(prefix);
@@ -115,10 +149,15 @@
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${coupon}</td>
-        <td>⏳ Checking...</td>
+        <td class="status pending"><div class="spinner-border spinner-border-sm"></div> Checking...</td>
         <td></td>
+        <td><button class="btn btn-sm btn-outline-secondary copy-btn">Copy</button></td>
       `;
       tableBody.appendChild(row);
+
+      row.querySelector(".copy-btn").addEventListener("click", () => copyToClipboard(coupon));
+
+      progressContainer.textContent = `Checking ${i+1} of ${count} coupons...`;
 
       try {
         const res = await fetch("/api/check-coupon", {
@@ -129,25 +168,27 @@
 
         const data = await res.json();
 
-        if (data.result?.status === "success") {
+        if (data?.result?.status === "success") {
           row.cells[1].innerHTML = "✅ Valid";
+          row.cells[1].className = "status valid";
           row.cells[2].innerHTML = "Discount applied!";
         } else {
           row.cells[1].innerHTML = "❌ Invalid";
-          row.cells[2].innerHTML = data.result?.reason?.reason_eng || "Unknown";
+          row.cells[1].className = "status invalid";
+          row.cells[2].innerHTML = data?.result?.reason?.reason_eng || "Not applicable";
         }
       } catch (err) {
         row.cells[1].innerHTML = "⚠️ Error";
-        row.cells[2].innerHTML = err.message;
+        row.cells[1].className = "status error";
+        row.cells[2].innerHTML = err.message || "Request failed";
       }
 
-      // Wait 15s before next request
-      if (i < count - 1) {
-        await sleep(15000);
-      }
+      if (i < count - 1) await sleep(15000);
     }
+
+    progressContainer.textContent = "All coupons checked.";
+    form.querySelector("button").disabled = false;
   });
 </script>
-
 </body>
 </html>
